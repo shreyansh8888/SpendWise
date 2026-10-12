@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.venv/
+env/
+.env
+
+# Model artifacts (optional if you want to commit or ignore, but model.pkl and metrics.json are generated)
+# Backend temporary files
+*.log
+
+# Node & Frontend
+node_modules/
+dist/
+.DS_Store
+*.local
+
+# IDE
+.vscode/
+.idea/
