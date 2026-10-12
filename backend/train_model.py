@@ -17,7 +17,7 @@ import numpy as np
 from sklearn.model_selection import train_test_split
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.linear_model import LogisticRegression
-from sklearn.pipeline import Pipeline
+from sklearn.pipeline import Pipeline, FeatureUnion
 from sklearn.metrics import (
     accuracy_score,
     precision_recall_fscore_support,
@@ -92,18 +92,31 @@ def train_and_evaluate():
     print(f"Training samples: {len(X_train)}, Testing samples: {len(X_test)}")
 
     # 4. Pipeline Construction
-    # TfidfVectorizer converts text into numerical n-gram token weights.
-    # LogisticRegression is a linear classifier with soft max probabilities, ideal for fast,
-    # high-precision sparse text classification.
-    pipeline = Pipeline([
-        ("tfidf", TfidfVectorizer(
-            ngram_range=(1, 2),        # Capture unigrams and bigrams
-            max_df=0.95,               # Ignore terms appearing in >95% docs
-            min_df=1,                  # Include terms appearing at least once
-            sublinear_tf=True          # Apply sublinear scaling: 1 + log(tf)
+    # Upgraded FeatureUnion:
+    # - Word-level TF-IDF (1, 2) with English stopwords: captures complete semantic tokens
+    # - Character-level TF-IDF char_wb (3, 5): captures brand stems, subwords, and abbreviations
+    # - Multinomial Logistic Regression with C=3.0 tuned for sparse high-dimensional n-grams
+    features = FeatureUnion([
+        ("word_tfidf", TfidfVectorizer(
+            ngram_range=(1, 2),
+            stop_words="english",
+            max_df=0.95,
+            min_df=1,
+            sublinear_tf=True
         )),
+        ("char_tfidf", TfidfVectorizer(
+            analyzer="char_wb",
+            ngram_range=(3, 5),
+            max_df=0.95,
+            min_df=1,
+            sublinear_tf=True
+        ))
+    ])
+
+    pipeline = Pipeline([
+        ("features", features),
         ("classifier", LogisticRegression(
-            C=1.5,
+            C=3.0,
             max_iter=1000,
             random_state=RANDOM_SEED,
             solver="lbfgs"
@@ -144,7 +157,7 @@ def train_and_evaluate():
     # 8. Save metrics to JSON
     # Structure metrics clearly for API consumption and Viva display
     metrics_data = {
-        "model_name": "TF-IDF + Logistic Regression Expense Classifier",
+        "model_name": "Upgraded FeatureUnion (Word + Char_wb TF-IDF) + Multinomial Logistic Regression",
         "random_seed": RANDOM_SEED,
         "trained_at": datetime.now(timezone.utc).isoformat(),
         "total_samples": int(total_valid),

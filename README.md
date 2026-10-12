@@ -120,8 +120,10 @@ To guarantee scientific validity:
 ## 8. Dataset Description & Limitations
 
 - **File:** `backend/expenses.csv`
-- **Total Valid Records:** 480 balanced records (60 samples across each of the 8 classes).
+- **Total Valid Records:** 720 balanced records (90 samples across each of the 8 classes, with zero duplicates).
 - **Nature of Dataset:** Curated benchmark dataset modeling typical everyday Indian and global spending entries (e.g., Swiggy, Zomato, Uber, BESCOM, Airtel, Blinkit, Apollo Pharmacy, Coursera).
+- **Model Architecture:** FeatureUnion combining Word-level TF-IDF (1, 2) + Character-level `char_wb` (3, 5) with Multinomial Logistic Regression ($C=3.0$).
+- **Held-Out Test Accuracy:** **89.58%** | **Macro F1:** **89.70%** (Stratified 5-Fold Cross-Validation: **90.83%**).
 - **Known Limitations:**
   - Performs best on English descriptions and transliterated brand names.
   - Very ambiguous one-word inputs (e.g., *"charge"*, *"payment"*) will naturally yield lower top-class probabilities.
@@ -134,9 +136,9 @@ To guarantee scientific validity:
 ```
 SpendWise/
 ├── backend/
-│   ├── expenses.csv         # Curated 8-category training dataset (480 records)
+│   ├── expenses.csv         # Curated 8-category training dataset (720 records)
 │   ├── train_model.py       # Reproducible training & evaluation script
-│   ├── main.py              # FastAPI application server
+│   ├── main.py              # FastAPI application server with CORS & confidence tiers
 │   ├── requirements.txt     # Python backend dependencies
 │   ├── model.pkl            # Serialized scikit-learn pipeline (generated)
 │   └── metrics.json         # Genuine test-set evaluation results (generated)

@@ -104,7 +104,7 @@ export default function ModelInsights({ apiUrl }) {
         <div>
           <div className="card-title">Model Evaluation & Scientific Insights</div>
           <div className="card-subtitle" style={{ marginBottom: 0 }}>
-            Trained Pipeline: TF-IDF Vectorizer + Multinomial Logistic Regression
+            Trained Pipeline: {metrics.model_name || 'FeatureUnion (Word + Char_wb TF-IDF) + Multinomial Logistic Regression'}
           </div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>

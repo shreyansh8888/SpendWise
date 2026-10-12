@@ -1,11 +1,14 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { 
   IndianRupee, 
   ArrowUpRight, 
   Hash, 
   PieChart as PieIcon,
   PlusCircle,
-  Receipt
+  Receipt,
+  Target,
+  Edit2,
+  Check
 } from 'lucide-react';
 import { 
   PieChart, 
@@ -46,7 +49,37 @@ export const getCategoryBadgeClass = (category) => {
   }
 };
 
+const BUDGET_STORAGE_KEY = 'spendwise_monthly_budget_v1';
+
 export default function Dashboard({ transactions, onNavigatePredict }) {
+  // Monthly Budget Goal State
+  const [budgetGoal, setBudgetGoal] = useState(() => {
+    try {
+      const stored = localStorage.getItem(BUDGET_STORAGE_KEY);
+      return stored ? Number(stored) : 15000;
+    } catch {
+      return 15000;
+    }
+  });
+  const [isEditingBudget, setIsEditingBudget] = useState(false);
+  const [budgetInput, setBudgetInput] = useState(budgetGoal);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(BUDGET_STORAGE_KEY, budgetGoal.toString());
+    } catch (e) {
+      console.error('Failed to save budget:', e);
+    }
+  }, [budgetGoal]);
+
+  const handleSaveBudget = () => {
+    const val = Number(budgetInput);
+    if (!isNaN(val) && val > 0) {
+      setBudgetGoal(val);
+      setIsEditingBudget(false);
+    }
+  };
+
   // Aggregate statistics derived strictly from real recorded transactions
   const totalSpend = useMemo(() => {
     return transactions.reduce((acc, t) => acc + (Number(t.amount) || 0), 0);
@@ -59,23 +92,36 @@ export default function Dashboard({ transactions, onNavigatePredict }) {
     return totalSpend / transactionCount;
   }, [totalSpend, transactionCount]);
 
-  // Aggregate category-wise spending
+  // Aggregate category-wise spending with exact percentages and counts
   const categoryData = useMemo(() => {
     const grouped = {};
+    const counts = {};
     transactions.forEach((t) => {
       const cat = t.category || 'Uncategorized';
       grouped[cat] = (grouped[cat] || 0) + (Number(t.amount) || 0);
+      counts[cat] = (counts[cat] || 0) + 1;
     });
 
-    return Object.entries(grouped).map(([name, value]) => ({
-      name,
-      value: Math.round(value * 100) / 100
-    })).sort((a, b) => b.value - a.value);
-  }, [transactions]);
+    return Object.entries(grouped).map(([name, value]) => {
+      const roundedVal = Math.round(value * 100) / 100;
+      const pct = totalSpend > 0 ? (value / totalSpend) * 100 : 0;
+      return {
+        name,
+        value: roundedVal,
+        percentage: Math.round(pct * 10) / 10,
+        count: counts[name] || 0
+      };
+    }).sort((a, b) => b.value - a.value);
+  }, [transactions, totalSpend]);
 
   const recentTransactions = useMemo(() => {
     return [...transactions].slice(0, 5);
   }, [transactions]);
+
+  // Budget calculations
+  const budgetPercentage = budgetGoal > 0 ? Math.min(Math.round((totalSpend / budgetGoal) * 100), 100) : 0;
+  const remainingBudget = budgetGoal - totalSpend;
+  const isBudgetExceeded = remainingBudget < 0;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.75rem' }}>
@@ -109,6 +155,77 @@ export default function Dashboard({ transactions, onNavigatePredict }) {
             <span className="stat-label">Average Expense</span>
             <span className="stat-value">₹{averageSpend.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
           </div>
+        </div>
+      </div>
+
+      {/* Monthly Budget Tracker Card */}
+      <div className="card" style={{ padding: '1.25rem 1.5rem' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.75rem', marginBottom: '0.75rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <Target size={20} style={{ color: 'var(--primary)' }} />
+            <div>
+              <div style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text-main)' }}>
+                Monthly Budget Tracker
+              </div>
+              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                Track spending against your target monthly budget
+              </div>
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            {isEditingBudget ? (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>₹</span>
+                <input
+                  type="number"
+                  className="form-input"
+                  style={{ width: '110px', padding: '0.3rem 0.5rem', fontSize: '0.85rem' }}
+                  value={budgetInput}
+                  onChange={(e) => setBudgetInput(e.target.value)}
+                  autoFocus
+                />
+                <button
+                  className="btn btn-primary"
+                  style={{ padding: '0.35rem 0.65rem', fontSize: '0.75rem' }}
+                  onClick={handleSaveBudget}
+                >
+                  <Check size={14} />
+                  <span>Save</span>
+                </button>
+              </div>
+            ) : (
+              <button
+                className="btn btn-secondary"
+                style={{ padding: '0.35rem 0.65rem', fontSize: '0.75rem' }}
+                onClick={() => { setBudgetInput(budgetGoal); setIsEditingBudget(true); }}
+              >
+                <Edit2 size={13} />
+                <span>Edit Goal (₹{budgetGoal.toLocaleString('en-IN')})</span>
+              </button>
+            )}
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', fontWeight: 600, marginBottom: '0.35rem' }}>
+          <span>
+            Spent: <strong style={{ color: 'var(--text-main)' }}>₹{totalSpend.toLocaleString('en-IN')}</strong> of ₹{budgetGoal.toLocaleString('en-IN')}
+          </span>
+          <span style={{ color: isBudgetExceeded ? '#dc2626' : '#059669' }}>
+            {isBudgetExceeded 
+              ? `Exceeded by ₹${Math.abs(remainingBudget).toLocaleString('en-IN')}` 
+              : `₹${remainingBudget.toLocaleString('en-IN')} remaining (${100 - budgetPercentage}%)`}
+          </span>
+        </div>
+
+        <div className="progress-track" style={{ height: '9px' }}>
+          <div
+            className="progress-bar-fill"
+            style={{
+              width: `${Math.min((totalSpend / budgetGoal) * 100, 100)}%`,
+              backgroundColor: isBudgetExceeded ? '#ef4444' : totalSpend / budgetGoal > 0.8 ? '#f59e0b' : '#0d9488'
+            }}
+          />
         </div>
       </div>
 
@@ -154,7 +271,10 @@ export default function Dashboard({ transactions, onNavigatePredict }) {
                       ))}
                     </Pie>
                     <Tooltip 
-                      formatter={(val) => [`₹${Number(val).toLocaleString('en-IN')}`, 'Amount']} 
+                      formatter={(val, name, item) => [
+                        `₹${Number(val).toLocaleString('en-IN')} (${item?.payload?.percentage || 0}%)`, 
+                        'Amount'
+                      ]} 
                     />
                     <Legend 
                       verticalAlign="bottom" 
@@ -187,7 +307,10 @@ export default function Dashboard({ transactions, onNavigatePredict }) {
                       tickFormatter={(v) => `₹${v}`} 
                     />
                     <Tooltip 
-                      formatter={(val) => [`₹${Number(val).toLocaleString('en-IN')}`, 'Spent']} 
+                      formatter={(val, name, item) => [
+                        `₹${Number(val).toLocaleString('en-IN')} (${item?.payload?.percentage || 0}%)`, 
+                        'Spent'
+                      ]} 
                     />
                     <Bar dataKey="value" radius={[4, 4, 0, 0]}>
                       {categoryData.map((entry) => (
@@ -200,6 +323,46 @@ export default function Dashboard({ transactions, onNavigatePredict }) {
                   </BarChart>
                 </ResponsiveContainer>
               </div>
+            </div>
+          </div>
+
+          {/* Category-Wise Spending & Percentage Breakdown Table */}
+          <div className="card">
+            <div className="card-title">Category-Wise Breakdown & Percentages</div>
+            <div className="card-subtitle">
+              Exact spending distribution across all active expense categories
+            </div>
+            <div className="table-wrapper">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>Category</th>
+                    <th style={{ textAlign: 'center' }}>Transactions</th>
+                    <th style={{ textAlign: 'right' }}>Total Amount</th>
+                    <th style={{ textAlign: 'right' }}>Percentage Share</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {categoryData.map((cat) => (
+                    <tr key={cat.name}>
+                      <td>
+                        <span className={`badge ${getCategoryBadgeClass(cat.name)}`}>
+                          {cat.name}
+                        </span>
+                      </td>
+                      <td style={{ textAlign: 'center', color: 'var(--text-muted)' }}>
+                        {cat.count}
+                      </td>
+                      <td style={{ textAlign: 'right', fontWeight: 700, color: 'var(--text-main)' }}>
+                        ₹{cat.value.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                      </td>
+                      <td style={{ textAlign: 'right', fontWeight: 600, color: 'var(--primary)' }}>
+                        {cat.percentage}%
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           </div>
 
@@ -223,7 +386,7 @@ export default function Dashboard({ transactions, onNavigatePredict }) {
                 <thead>
                   <tr>
                     <th>Description</th>
-                    <th>Predicted Category</th>
+                    <th>Category</th>
                     <th>Date</th>
                     <th style={{ textAlign: 'right' }}>Amount</th>
                   </tr>

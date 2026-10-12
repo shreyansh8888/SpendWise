@@ -6,9 +6,21 @@ import {
   AlertCircle, 
   CheckCircle2, 
   Info, 
-  Loader2 
+  Loader2,
+  Edit3
 } from 'lucide-react';
 import { getCategoryBadgeClass } from './Dashboard';
+
+const ALL_CATEGORIES = [
+  'Food & Dining',
+  'Transport',
+  'Shopping',
+  'Bills & Utilities',
+  'Entertainment',
+  'Health',
+  'Education',
+  'Groceries'
+];
 
 const EXAMPLE_QUERIES = [
   { text: 'Swiggy dinner order with friends', amount: '450' },
@@ -27,6 +39,7 @@ export default function ExpenseForm({ apiUrl, onAddExpense }) {
   const [isLoading, setIsLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState(null);
   const [predictionResult, setPredictionResult] = useState(null);
+  const [chosenCategory, setChosenCategory] = useState('');
   const [addedSuccess, setAddedSuccess] = useState(false);
 
   const handlePredict = async (e) => {
@@ -65,6 +78,7 @@ export default function ExpenseForm({ apiUrl, onAddExpense }) {
 
       const data = await response.json();
       setPredictionResult(data);
+      setChosenCategory(data.predicted_category);
     } catch (err) {
       setErrorMsg(`Prediction failed: ${err.message}. Ensure backend is running.`);
     } finally {
@@ -75,17 +89,25 @@ export default function ExpenseForm({ apiUrl, onAddExpense }) {
   const handleSaveExpense = () => {
     if (!predictionResult) return;
 
+    // Collision-resistant ID generation
+    const uniqueId = (typeof crypto !== 'undefined' && crypto.randomUUID)
+      ? crypto.randomUUID()
+      : `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+
     onAddExpense({
-      id: Date.now().toString(),
+      id: uniqueId,
       description: predictionResult.description,
       amount: predictionResult.amount,
-      category: predictionResult.predicted_category,
+      category: chosenCategory || predictionResult.predicted_category,
+      originalPredictedCategory: predictionResult.predicted_category,
+      wasOverridden: chosenCategory !== predictionResult.predicted_category,
       confidence: predictionResult.confidence,
       date: new Date().toISOString()
     });
 
     setAddedSuccess(true);
     setPredictionResult(null);
+    setChosenCategory('');
     setDescription('');
     setAmount('');
   };
@@ -98,6 +120,31 @@ export default function ExpenseForm({ apiUrl, onAddExpense }) {
     setAddedSuccess(false);
   };
 
+  const getConfidenceTierInfo = (conf) => {
+    if (conf >= 0.60) {
+      return {
+        label: 'High Statistical Likelihood',
+        badgeBg: '#ecfdf5',
+        badgeColor: '#047857',
+        borderColor: '#a7f3d0'
+      };
+    } else if (conf >= 0.30) {
+      return {
+        label: 'Moderate Statistical Likelihood',
+        badgeBg: '#eff6ff',
+        badgeColor: '#1d4ed8',
+        borderColor: '#bfdbfe'
+      };
+    } else {
+      return {
+        label: 'Ambiguous / Low Confidence',
+        badgeBg: '#f8fafc',
+        badgeColor: '#475569',
+        borderColor: '#cbd5e1'
+      };
+    }
+  };
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
       <div className="predictor-grid">
@@ -105,7 +152,7 @@ export default function ExpenseForm({ apiUrl, onAddExpense }) {
         <div className="card">
           <div className="card-title">Predict Expense Category</div>
           <div className="card-subtitle">
-            Enter expense details to infer the category using our scikit-learn TF-IDF model
+            Enter expense details to classify with our scikit-learn FeatureUnion model
           </div>
 
           {errorMsg && (
@@ -155,7 +202,10 @@ export default function ExpenseForm({ apiUrl, onAddExpense }) {
                 className="form-input"
                 placeholder="e.g. Swiggy biryani dinner, Metro card recharge..."
                 value={description}
-                onChange={(e) => setDescription(e.target.value)}
+                onChange={(e) => {
+                  setDescription(e.target.value);
+                  if (errorMsg) setErrorMsg(null);
+                }}
                 maxLength={500}
                 disabled={isLoading}
               />
@@ -183,7 +233,10 @@ export default function ExpenseForm({ apiUrl, onAddExpense }) {
                   style={{ paddingLeft: '2rem' }}
                   placeholder="350.00"
                   value={amount}
-                  onChange={(e) => setAmount(e.target.value)}
+                  onChange={(e) => {
+                    setAmount(e.target.value);
+                    if (errorMsg) setErrorMsg(null);
+                  }}
                   disabled={isLoading}
                 />
               </div>
@@ -209,7 +262,7 @@ export default function ExpenseForm({ apiUrl, onAddExpense }) {
             </button>
           </form>
 
-          {/* Quick Examples for examiners/users */}
+          {/* Quick Examples */}
           <div style={{ marginTop: '1.5rem', paddingTop: '1.25rem', borderTop: '1px solid var(--border-light)' }}>
             <span style={{ fontSize: '0.785rem', fontWeight: 600, color: 'var(--text-muted)' }}>
               Quick Test Examples (Click to fill):
@@ -233,7 +286,7 @@ export default function ExpenseForm({ apiUrl, onAddExpense }) {
         <div className="card" style={{ display: 'flex', flexDirection: 'column' }}>
           <div className="card-title">Prediction Result & Probabilities</div>
           <div className="card-subtitle">
-            Live multi-class softmax probabilities from trained Logistic Regression
+            Multi-class softmax probability distribution across 8 financial categories
           </div>
 
           {!predictionResult ? (
@@ -248,25 +301,80 @@ export default function ExpenseForm({ apiUrl, onAddExpense }) {
             </div>
           ) : (
             <div className="prediction-result-box" style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '0.5rem' }}>
                 <div>
                   <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>
-                    Predicted Category
+                    Model Predicted Category
                   </span>
                   <div style={{ marginTop: '0.25rem' }}>
-                    <span className={`badge ${getCategoryBadgeClass(predictionResult.predicted_category)}`} style={{ fontSize: '1rem', padding: '0.4rem 0.9rem' }}>
+                    <span className={`badge ${getCategoryBadgeClass(predictionResult.predicted_category)}`} style={{ fontSize: '0.95rem', padding: '0.35rem 0.85rem' }}>
                       {predictionResult.predicted_category}
                     </span>
                   </div>
                 </div>
+
                 <div style={{ textAlign: 'right' }}>
-                  <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>
-                    Top Confidence
-                  </span>
-                  <div style={{ fontSize: '1.3rem', fontWeight: 800, color: 'var(--primary)' }}>
-                    {(predictionResult.confidence * 100).toFixed(1)}%
-                  </div>
+                  {(() => {
+                    const tier = getConfidenceTierInfo(predictionResult.confidence);
+                    return (
+                      <div>
+                        <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>
+                          Model Confidence
+                        </span>
+                        <div style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--primary)' }}>
+                          {(predictionResult.confidence * 100).toFixed(1)}%
+                        </div>
+                        <span style={{
+                          display: 'inline-block',
+                          fontSize: '0.675rem',
+                          fontWeight: 700,
+                          backgroundColor: tier.badgeBg,
+                          color: tier.badgeColor,
+                          border: `1px solid ${tier.borderColor}`,
+                          padding: '0.1rem 0.45rem',
+                          borderRadius: '4px',
+                          marginTop: '2px'
+                        }}>
+                          {tier.label}
+                        </span>
+                      </div>
+                    );
+                  })()}
                 </div>
+              </div>
+
+              {/* Human-in-the-Loop Category Override Dropdown */}
+              <div style={{
+                marginTop: '1.25rem',
+                padding: '0.85rem 1rem',
+                backgroundColor: '#ffffff',
+                border: '1px solid var(--border-light)',
+                borderRadius: 'var(--radius-md)'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginBottom: '0.4rem' }}>
+                  <Edit3 size={15} style={{ color: 'var(--primary)' }} />
+                  <label htmlFor="category-override" style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-main)' }}>
+                    Assigned Category (Review or Override):
+                  </label>
+                </div>
+                <select
+                  id="category-override"
+                  className="form-input"
+                  style={{ width: '100%', fontSize: '0.85rem', padding: '0.5rem 0.75rem' }}
+                  value={chosenCategory}
+                  onChange={(e) => setChosenCategory(e.target.value)}
+                >
+                  {ALL_CATEGORIES.map((cat) => (
+                    <option key={cat} value={cat}>
+                      {cat} {cat === predictionResult.predicted_category ? '(Model Predicted)' : ''}
+                    </option>
+                  ))}
+                </select>
+                {chosenCategory !== predictionResult.predicted_category && (
+                  <div style={{ marginTop: '0.35rem', fontSize: '0.725rem', color: '#b45309', fontWeight: 600 }}>
+                    ✏️ You changed category from "{predictionResult.predicted_category}" to "{chosenCategory}"
+                  </div>
+                )}
               </div>
 
               {/* Class Probability Breakdown */}
@@ -276,13 +384,17 @@ export default function ExpenseForm({ apiUrl, onAddExpense }) {
                 </span>
                 <div className="probability-list">
                   {Object.entries(predictionResult.probabilities).map(([category, prob]) => {
-                    const isTop = category === predictionResult.predicted_category;
+                    const isPredicted = category === predictionResult.predicted_category;
+                    const isSelected = category === chosenCategory;
                     const percentage = (prob * 100).toFixed(1);
                     return (
                       <div key={category} className="probability-item">
                         <div className="probability-label-row">
-                          <span style={{ color: isTop ? 'var(--primary)' : 'var(--text-muted)' }}>
-                            {category}
+                          <span style={{
+                            color: isSelected ? 'var(--primary)' : 'var(--text-muted)',
+                            fontWeight: isSelected ? 700 : 500
+                          }}>
+                            {category} {isSelected ? '✓' : ''}
                           </span>
                           <span>{percentage}%</span>
                         </div>
@@ -291,7 +403,7 @@ export default function ExpenseForm({ apiUrl, onAddExpense }) {
                             className="progress-bar-fill"
                             style={{
                               width: `${percentage}%`,
-                              backgroundColor: isTop ? 'var(--primary)' : '#94a3b8'
+                              backgroundColor: isPredicted ? 'var(--primary)' : '#94a3b8'
                             }}
                           />
                         </div>
@@ -301,7 +413,7 @@ export default function ExpenseForm({ apiUrl, onAddExpense }) {
                 </div>
               </div>
 
-              {/* Scientific Disclaimer */}
+              {/* Statistical Note */}
               <div style={{
                 marginTop: '1.25rem',
                 padding: '0.65rem 0.85rem',
@@ -316,7 +428,7 @@ export default function ExpenseForm({ apiUrl, onAddExpense }) {
               }}>
                 <Info size={15} style={{ flexShrink: 0, marginTop: '2px', color: 'var(--primary)' }} />
                 <span>
-                  <strong>Statistical Note:</strong> {predictionResult.disclaimer}
+                  <strong>Statistical Context:</strong> Across 8 classes (where random baseline is 12.5%), probability indicates relative model affinity based on vocabulary weights.
                 </span>
               </div>
 
@@ -328,7 +440,7 @@ export default function ExpenseForm({ apiUrl, onAddExpense }) {
                 onClick={handleSaveExpense}
               >
                 <PlusCircle size={18} />
-                <span>Add Expense to Record (₹{predictionResult.amount})</span>
+                <span>Add Expense as {chosenCategory} (₹{predictionResult.amount})</span>
               </button>
             </div>
           )}

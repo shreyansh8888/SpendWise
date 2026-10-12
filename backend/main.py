@@ -35,10 +35,12 @@ if raw_origins.strip() == "*":
 else:
     allowed_origins = [origin.strip() for origin in raw_origins.split(",") if origin.strip()]
 
+is_wildcard = (allowed_origins == ["*"])
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins if allowed_origins else ["*"],
-    allow_credentials=True,
+    allow_credentials=not is_wildcard,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -96,6 +98,7 @@ class PredictResponse(BaseModel):
     amount: float
     predicted_category: str
     confidence: float
+    confidence_tier: str
     probabilities: Dict[str, float]
     disclaimer: str
     timestamp: str
@@ -168,11 +171,19 @@ def predict_expense(payload: PredictRequest):
 
         top_confidence = round(float(max(proba_values)), 4)
 
+        if top_confidence >= 0.60:
+            tier = "high"
+        elif top_confidence >= 0.30:
+            tier = "moderate"
+        else:
+            tier = "low"
+
         return PredictResponse(
             description=payload.description,
             amount=payload.amount,
             predicted_category=str(predicted_class),
             confidence=top_confidence,
+            confidence_tier=tier,
             probabilities=sorted_probabilities,
             disclaimer=(
                 "Probability represents statistical model certainty based on training vocabulary, "
